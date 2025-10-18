@@ -1,0 +1,157 @@
+--- create database and table ---
+-- Create DB
+CREATE DATABASE IF NOT EXISTS social_analytics CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE social_analytics;
+
+-- Users
+CREATE TABLE users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  display_name VARCHAR(100),
+  email VARCHAR(255) UNIQUE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Posts
+CREATE TABLE posts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  content TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  like_count INT NOT NULL DEFAULT 0,
+  comment_count INT NOT NULL DEFAULT 0,
+  engagement_score INT NOT NULL DEFAULT 0,
+  CONSTRAINT fk_posts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Likes
+CREATE TABLE likes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  post_id INT NOT NULL,
+  user_id INT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY ux_like_user_post (post_id, user_id),
+  CONSTRAINT fk_likes_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_likes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Comments
+CREATE TABLE comments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  post_id INT NOT NULL,
+  user_id INT NOT NULL,
+  content TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_comments_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_comments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Helpful indexes
+CREATE INDEX idx_posts_user_created ON posts(user_id, created_at);
+CREATE INDEX idx_likes_post ON likes(post_id);
+CREATE INDEX idx_comments_post ON comments(post_id);
+
+--- Insert data ---
+-- Users
+INSERT INTO users (username, display_name, email)
+VALUES
+('alice','Alice Johnson','alice@example.com'),
+('bob','Bob Kumar','bob@example.com'),
+('carol','Carol Lee','carol@example.com'),
+('dinesh','Dinesh R','dinesh@example.com'),
+('emma','Emma Smith','emma@example.com');
+
+-- Posts
+INSERT INTO posts (user_id, content, created_at) VALUES
+(1, 'Just launched my new blog — check it out!', '2025-10-01 09:00:00'),
+(2, 'Sunny day at the beach!', '2025-10-02 11:15:00'),
+(3, 'Data science tips: always inspect your data.', '2025-10-03 08:30:00'),
+(1, 'Behind the scenes of our startup.', '2025-10-05 18:20:00'),
+(4, 'Cooking a traditional recipe tonight.', '2025-10-07 20:00:00');
+
+-- Likes
+INSERT INTO likes (post_id, user_id) VALUES
+(1,2),(1,3),(1,4),
+(2,1),(2,3),
+(3,1),(3,2),(3,4),(3,5),
+(4,2),
+(5,1),(5,3);
+
+-- Comments
+INSERT INTO comments (post_id, user_id, content) VALUES
+(1,2,'Congrats!'),
+(1,3,'Nice read.'),
+(2,1,'Looks relaxing!'),
+(3,5,'Great tip, thanks!'),
+(3,2,'Could you share a notebook?'),
+(4,3,'Exciting news.'),
+(5,1,'Recipe pls!');
+
+-- Update counters initially (we will add triggers later but set baseline)
+UPDATE posts p
+SET like_count = (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id),
+    comment_count = (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id),
+    engagement_score = (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id)
+                     + 2 * (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id);
+
+--- View for top post ---
+-- Top posts overall by engagement_score
+CREATE OR REPLACE VIEW vw_top_posts AS
+SELECT p.id, p.user_id, u.username, p.content, p.like_count, p.comment_count, p.engagement_score, p.created_at
+FROM posts p
+JOIN users u ON u.id = p.user_id
+ORDER BY p.engagement_score DESC;
+
+-- Top posts last 7 days (assuming server date)
+CREATE OR REPLACE VIEW vw_top_posts_7d AS
+SELECT p.id, p.user_id, u.username, p.content, p.like_count, p.comment_count, p.engagement_score, p.created_at
+FROM posts p
+JOIN users u ON u.id = p.user_id
+WHERE p.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+ORDER BY p.engagement_score DESC;
+
+-- User engagement summary (per user)
+CREATE OR REPLACE VIEW vw_user_engagement AS
+SELECT u.id AS user_id, u.username,
+       COUNT(p.id) AS posts_count,
+       SUM(p.like_count) AS total_likes_received,
+       SUM(p.comment_count) AS total_comments_received,
+       COALESCE(SUM(p.engagement_score),0) AS total_engagement
+FROM users u
+LEFT JOIN posts p ON p.user_id = u.id
+GROUP BY u.id, u.username
+ORDER BY total_engagement DESC;
+
+--- Ranking query ---
+WITH ranked AS (
+  SELECT p.id, p.user_id, u.username, p.content, p.engagement_score,
+         ROW_NUMBER() OVER (PARTITION BY p.user_id ORDER BY p.engagement_score DESC) AS rn
+  FROM posts p JOIN users u ON u.id = p.user_id
+)
+SELECT * FROM ranked WHERE rn = 1;
+
+--- Top post last N days ---
+SELECT p.id, u.username, p.content, p.like_count, p.comment_count, p.engagement_score
+FROM posts p JOIN users u ON u.id = p.user_id
+WHERE p.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) -- set period
+ORDER BY p.engagement_score DESC
+LIMIT 50;
+
+-- daily engagement ---
+SELECT DATE(created_at) AS day,
+       SUM(like_count) AS likes_total,
+       SUM(comment_count) AS comments_total,
+       SUM(engagement_score) AS engagement_total
+FROM posts
+GROUP BY DATE(created_at)
+ORDER BY day DESC
+LIMIT 30;
+
+--- Exporting reports ---
+SELECT u.username, p.id AS post_id, p.content, p.like_count, p.comment_count, p.engagement_score, p.created_at
+INTO OUTFILE 'C:/wamp64/tmp/engagement_report.csv'
+FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n'
+FROM posts p JOIN users u ON u.id = p.user_id
+ORDER BY p.engagement_score DESC;
+
