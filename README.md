@@ -38,3 +38,30 @@ By simulating realistic social media interactions, the system demonstrates how e
 
 # PROJECT 2
 # Airline Researvation Project 
+# Tools Used 
+* MySQL (WAMP)
+# Search Flight 
+
+<img width="979" height="471" alt="image" src="https://github.com/user-attachments/assets/a887cb29-c5fa-4bbe-b17f-67370095f5da" />
+
+# Availabe Seats 
+
+<img width="979" height="454" alt="image" src="https://github.com/user-attachments/assets/6b0da0f5-932e-4b09-be48-7e19c00c60fe" />
+
+# View 
+
+<img width="979" height="436" alt="image" src="https://github.com/user-attachments/assets/614cda7c-8c42-43ab-b41b-376f2a174d85" />
+
+# Booking summary per flight 
+
+
+<img width="979" height="310" alt="image" src="https://github.com/user-attachments/assets/3d34aeb3-2fc3-4c1c-aa01-625a47df19e8" />
+
+# Occupied seats 
+
+<img width="979" height="330" alt="image" src="https://github.com/user-attachments/assets/bbbda02b-631e-458c-af39-81787f28437c" />
+
+# Booking History 
+
+<img width="979" height="288" alt="image" src="https://github.com/user-attachments/assets/590d2685-acc4-4d36-b5bd-68a536dcea82" />
+
