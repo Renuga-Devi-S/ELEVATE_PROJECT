@@ -1,0 +1,287 @@
+# database name - airline 
+-- 1. airports (optional)
+CREATE TABLE airports (
+  iata CHAR(3) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  city VARCHAR(100),
+  country VARCHAR(100)
+) ENGINE=InnoDB;
+
+-- 2. aircrafts
+CREATE TABLE aircrafts (
+  aircraft_id INT AUTO_INCREMENT PRIMARY KEY,
+  model VARCHAR(100) NOT NULL,
+  total_seats INT NOT NULL
+) ENGINE=InnoDB;
+
+-- 3. seat_classes
+CREATE TABLE seat_classes (
+  class_id INT AUTO_INCREMENT PRIMARY KEY,
+  class_code VARCHAR(20) NOT NULL UNIQUE, -- 'Economy', 'Business', 'First'
+  description VARCHAR(255)
+) ENGINE=InnoDB;
+
+-- 4. seats (seat map per aircraft)
+CREATE TABLE seats (
+  seat_id INT AUTO_INCREMENT PRIMARY KEY,
+  aircraft_id INT NOT NULL,
+  seat_no VARCHAR(6) NOT NULL,
+  class_id INT NOT NULL,
+  CONSTRAINT uq_aircraft_seat UNIQUE (aircraft_id, seat_no),
+  FOREIGN KEY (aircraft_id) REFERENCES aircrafts(aircraft_id) ON DELETE CASCADE,
+  FOREIGN KEY (class_id) REFERENCES seat_classes(class_id)
+) ENGINE=InnoDB;
+
+-- 5. flights
+CREATE TABLE flights (
+  flight_id INT AUTO_INCREMENT PRIMARY KEY,
+  flight_no VARCHAR(10) NOT NULL, -- e.g. AI101
+  aircraft_id INT NOT NULL,
+  departure_airport CHAR(3) NOT NULL,
+  arrival_airport CHAR(3) NOT NULL,
+  departure_time DATETIME NOT NULL,
+  arrival_time DATETIME NOT NULL,
+  status ENUM('Scheduled','On Time','Delayed','Cancelled') DEFAULT 'Scheduled',
+  CONSTRAINT fk_flight_aircraft FOREIGN KEY (aircraft_id) REFERENCES aircrafts(aircraft_id),
+  CONSTRAINT fk_flight_dep_ap FOREIGN KEY (departure_airport) REFERENCES airports(iata),
+  CONSTRAINT fk_flight_arr_ap FOREIGN KEY (arrival_airport) REFERENCES airports(iata)
+) ENGINE=InnoDB;
+
+-- 6. customers
+CREATE TABLE customers (
+  customer_id INT AUTO_INCREMENT PRIMARY KEY,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  email VARCHAR(150),
+  phone VARCHAR(30)
+) ENGINE=InnoDB;
+
+-- 7. bookings
+CREATE TABLE bookings (
+  booking_id INT AUTO_INCREMENT PRIMARY KEY,
+  booking_ref VARCHAR(12) NOT NULL UNIQUE, -- generate like BK123456
+  customer_id INT NOT NULL,
+  flight_id INT NOT NULL,
+  seat_id INT NOT NULL,
+  booked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status ENUM('Booked','Checked-in','Cancelled') DEFAULT 'Booked',
+  price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  CONSTRAINT fk_booking_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
+  CONSTRAINT fk_booking_flight FOREIGN KEY (flight_id) REFERENCES flights(flight_id) ON DELETE CASCADE,
+  CONSTRAINT fk_booking_seat FOREIGN KEY (seat_id) REFERENCES seats(seat_id)
+) ENGINE=InnoDB;
+
+-- 8. payments (simple)
+CREATE TABLE payments (
+  payment_id INT AUTO_INCREMENT PRIMARY KEY,
+  booking_id INT NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  paid_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  method VARCHAR(50),
+  CONSTRAINT fk_payment_booking FOREIGN KEY (booking_id) REFERENCES bookings(booking_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Insert Data -- 
+-- airports
+INSERT INTO airports (iata, name, city, country) VALUES
+('DEL','Indira Gandhi Intl','New Delhi','India'),
+('BOM','Chhatrapati Shivaji Intl','Mumbai','India'),
+('BLR','Kempegowda Intl','Bengaluru','India'),
+('HYD','Rajiv Gandhi Intl','Hyderabad','India');
+
+-- seat_classes
+INSERT INTO seat_classes (class_code, description) VALUES
+('Economy','Economy class'),
+('Business','Business class'),
+('First','First class');
+
+-- aircrafts
+INSERT INTO aircrafts (model, total_seats) VALUES
+('Airbus A320',180),
+('Boeing 737',160);
+
+-- seats for A320 (aircraft_id 1) - small sample map
+INSERT INTO seats (aircraft_id, seat_no, class_id) VALUES
+(1,'1A',3), (1,'1B',3), -- first
+(1,'2A',2), (1,'2B',2), (1,'3A',2), (1,'3B',2), -- business rows
+(1,'10A',1),(1,'10B',1),(1,'10C',1),(1,'10D',1),(1,'20A',1),(1,'20B',1); -- economy sample
+
+-- seats for Boeing 737 (aircraft_id 2) - a few seats
+INSERT INTO seats (aircraft_id, seat_no, class_id) VALUES
+(2,'1A',3),(2,'1B',3),(2,'2A',2),(2,'2B',2),(2,'12A',1),(2,'12B',1);
+
+-- flights
+INSERT INTO flights (flight_no, aircraft_id, departure_airport, arrival_airport, departure_time, arrival_time)
+VALUES
+('AI101',1,'DEL','BOM','2025-11-01 09:00:00','2025-11-01 11:30:00'),
+('AI102',2,'BOM','DEL','2025-11-01 14:00:00','2025-11-01 16:30:00'),
+('AI201',1,'DEL','BLR','2025-11-02 06:00:00','2025-11-02 08:45:00');
+
+-- customers
+INSERT INTO customers (first_name, last_name, email, phone) VALUES
+('Ravi','Kumar','ravi@example.com','+919876543210'),
+('Anita','Sharma','anita@example.com','+919812345678');
+
+-- sample bookings (book Ravi on AI101 seat 10A)
+-- find seat_id for seat_no 10A on aircraft 1
+SET @seatid := (SELECT seat_id FROM seats WHERE aircraft_id=1 AND seat_no='10A' LIMIT 1);
+SET @flightid := (SELECT flight_id FROM flights WHERE flight_no='AI101' LIMIT 1);
+SET @custid := (SELECT customer_id FROM customers WHERE email='ravi@example.com' LIMIT 1);
+
+INSERT INTO bookings (booking_ref, customer_id, flight_id, seat_id, price)
+VALUES (CONCAT('BK', FLOOR(RAND()*899999)+100000), @custid, @flightid, @seatid, 4500.00);
+
+-- payment for that booking
+INSERT INTO payments (booking_id, amount, method) VALUES (LAST_INSERT_ID(), 4500.00, 'Card');
+
+-- search flight -- 
+-- search flights departing DEL to BOM on 2025-11-01
+SELECT f.flight_id, f.flight_no, a.model AS aircraft, f.departure_time, f.arrival_time, f.status
+FROM flights f
+JOIN aircrafts a ON f.aircraft_id = a.aircraft_id
+WHERE f.departure_airport='DEL' AND f.arrival_airport='BOM'
+  AND DATE(f.departure_time) = '2025-11-01';
+
+-- Available seats -- 
+-- view: available seats for a flight (parameterize flight_id)
+SELECT s.seat_id, s.seat_no, sc.class_code
+FROM seats s
+JOIN seat_classes sc ON s.class_id = sc.class_id
+WHERE s.aircraft_id = (SELECT aircraft_id FROM flights WHERE flight_id = 1)
+  AND s.seat_id NOT IN (
+    SELECT seat_id FROM bookings WHERE flight_id = 1 AND status <> 'Cancelled'
+  )
+ORDER BY sc.class_id, s.seat_no;
+
+-- View and Search flight --
+-- view for seats available on a flight
+CREATE OR REPLACE VIEW v_available_seats AS
+SELECT f.flight_id, s.seat_id, s.seat_no, sc.class_code
+FROM flights f
+JOIN seats s ON s.aircraft_id = f.aircraft_id
+JOIN seat_classes sc ON s.class_id = sc.class_id
+LEFT JOIN bookings b ON b.flight_id = f.flight_id AND b.seat_id = s.seat_id AND b.status <> 'Cancelled'
+WHERE b.booking_id IS NULL;
+
+-- flight search view (simple)
+CREATE OR REPLACE VIEW v_flight_search AS
+SELECT f.flight_id, f.flight_no, dep.iata AS dep_iata, dep.city AS dep_city, arr.iata AS arr_iata, arr.city AS arr_city,
+       f.departure_time, f.arrival_time, a.model
+FROM flights f
+JOIN airports dep ON f.departure_airport = dep.iata
+JOIN airports arr ON f.arrival_airport = arr.iata
+JOIN aircrafts a ON f.aircraft_id = a.aircraft_id;
+
+SELECT * FROM v_available_seats WHERE flight_id = 1;
+SELECT * FROM v_flight_search WHERE dep_iata='DEL' AND arr_iata='BOM';
+
+-- Booking and Cancellation consistent --
+-- 6.1 Trigger to auto-generate booking_ref before insert
+DELIMITER $$
+CREATE TRIGGER trg_booking_before_insert
+BEFORE INSERT ON bookings
+FOR EACH ROW
+BEGIN
+  IF NEW.booking_ref IS NULL OR NEW.booking_ref = '' THEN
+    SET NEW.booking_ref = CONCAT('BK', DATE_FORMAT(NOW(), '%y%m%d'), LPAD(FLOOR(RAND()*9999),4,'0'));
+  END IF;
+
+  -- Check seat is not already booked for same flight
+  IF EXISTS (
+    SELECT 1 FROM bookings b 
+    WHERE b.flight_id = NEW.flight_id 
+      AND b.seat_id = NEW.seat_id 
+      AND b.status <> 'Cancelled'
+  ) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Seat already booked for this flight';
+  END IF;
+END$$
+DELIMITER ;
+
+-- 6.2 Trigger after update: if booking status set to 'Cancelled' we could log or adjust (example: no action needed since availability derived from bookings)
+-- Example: prevent changing booking to 'Checked-in' if status is 'Cancelled'
+DELIMITER $$
+CREATE TRIGGER trg_booking_before_update
+BEFORE UPDATE ON bookings
+FOR EACH ROW
+BEGIN
+  IF NEW.status = 'Checked-in' AND OLD.status = 'Cancelled' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot check-in a cancelled booking';
+  END IF;
+END$$
+DELIMITER ;
+
+-- Booking and cancellation --
+-- Book seat procedure: params customer_id, flight_id, seat_id, price
+DELIMITER $$
+CREATE PROCEDURE sp_book_seat (
+  IN p_customer_id INT,
+  IN p_flight_id INT,
+  IN p_seat_id INT,
+  IN p_price DECIMAL(10,2),
+  OUT out_booking_id INT
+)
+BEGIN
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION
+  BEGIN
+    ROLLBACK;
+    SET out_booking_id = NULL;
+  END;
+
+  START TRANSACTION;
+
+  -- ensure seat belongs to flight's aircraft
+  IF (SELECT aircraft_id FROM seats WHERE seat_id = p_seat_id) <> (SELECT aircraft_id FROM flights WHERE flight_id = p_flight_id) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Seat does not belong to aircraft for this flight';
+  END IF;
+
+  -- ensure seat is not already booked
+  IF EXISTS (SELECT 1 FROM bookings WHERE flight_id = p_flight_id AND seat_id = p_seat_id AND status <> 'Cancelled') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Seat already booked';
+  END IF;
+
+  INSERT INTO bookings (booking_ref, customer_id, flight_id, seat_id, price)
+  VALUES (NULL, p_customer_id, p_flight_id, p_seat_id, p_price);
+
+  SET out_booking_id = LAST_INSERT_ID();
+
+  COMMIT;
+END$$
+DELIMITER ;
+
+-- Cancel booking procedure
+DELIMITER $$
+CREATE PROCEDURE sp_cancel_booking(IN p_booking_id INT)
+BEGIN
+  START TRANSACTION;
+  UPDATE bookings SET status = 'Cancelled' WHERE booking_id = p_booking_id;
+  -- optionally refund logic: insert into payments negative record, etc.
+  COMMIT;
+END$$
+DELIMITER ;
+
+-- booking summary per flight -- 
+SELECT f.flight_no, f.departure_airport, f.arrival_airport, DATE(f.departure_time) AS flight_date,
+       COUNT(b.booking_id) AS seats_booked,
+       SUM(b.price) AS total_revenue
+FROM flights f
+LEFT JOIN bookings b ON b.flight_id = f.flight_id AND b.status <> 'Cancelled'
+GROUP BY f.flight_id
+ORDER BY f.departure_time;
+
+-- occupancy --
+SELECT f.flight_no,
+       COUNT(b.booking_id) AS seats_booked,
+       (SELECT COUNT(*) FROM seats s WHERE s.aircraft_id = f.aircraft_id) AS total_seats,
+       ROUND(100 * COUNT(b.booking_id) / (SELECT COUNT(*) FROM seats s WHERE s.aircraft_id = f.aircraft_id),2) AS occupancy_pct
+FROM flights f
+LEFT JOIN bookings b ON b.flight_id = f.flight_id AND b.status <> 'Cancelled'
+GROUP BY f.flight_id;
+
+-- customer booking history --
+SELECT c.customer_id, CONCAT(c.first_name,' ',c.last_name) AS name, b.booking_ref, f.flight_no, f.departure_time, b.status, b.price
+FROM customers c
+JOIN bookings b ON b.customer_id = c.customer_id
+JOIN flights f ON f.flight_id = b.flight_id
+WHERE c.email = 'ravi@example.com'
+ORDER BY b.booked_at DESC;
