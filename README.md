@@ -1,3 +1,4 @@
+# PROJECT 1
 # social_media_analytics
 The project focuses on designing a Post Engagement Tracking System using MySQL as the backend and PHP + HTML + Chart.js for the front-end. The system allows administrators to:
  * Store posts, likes, comments, and user information.
@@ -35,4 +36,5 @@ By simulating realistic social media interactions, the system demonstrates how e
 <img width="634" height="614" alt="image" src="https://github.com/user-attachments/assets/4eeebf93-d608-4743-9b02-cfb68958ef8f" />
 <img width="647" height="386" alt="image" src="https://github.com/user-attachments/assets/b9fa8de7-fbef-4003-8754-667156cada3e" />
 
-
+# PROJECT 2
+# Airline Researvation Project 
